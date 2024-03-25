@@ -16,7 +16,19 @@ func mustMakeUrl(s string) *url.URL {
 
 func main() {
 
+	// Read config
 	cfg := LoadConfig()
+
+	// Init saver
+	log.Print("Inizializing saver...")
+	saver := NewFileSaver("log.csv")
+
+	saver.Init()
+
+	defer func() {
+		log.Println("Closing saver...")
+		saver.Close()
+	}()
 
 	mapping := make(map[string]*url.URL)
 
@@ -24,7 +36,7 @@ func main() {
 		mapping[m.Key] = mustMakeUrl(m.Destination)
 	}
 
-	proxy := NewRProxy(mapping)
+	proxy := NewRProxy(mapping, saver)
 
 	handler := http.NewServeMux()
 	handler.Handle("/", proxy)

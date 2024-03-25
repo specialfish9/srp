@@ -13,14 +13,15 @@ type UrlMapping map[string]*url.URL
 
 type RProxy struct {
 	mapping UrlMapping
+	saver   Saver
 }
 
-func NewRProxy(mapping UrlMapping) *RProxy {
-	return &RProxy{mapping}
+func NewRProxy(mapping UrlMapping, saver Saver) *RProxy {
+	return &RProxy{mapping, saver}
 }
 
-func (rd *RProxy) failInternal(rw http.ResponseWriter, cause error) {
-	rd.fail(rw, cause, http.StatusInternalServerError)
+func (rp *RProxy) failInternal(rw http.ResponseWriter, cause error) {
+	rp.fail(rw, cause, http.StatusInternalServerError)
 }
 
 func (rd *RProxy) fail(rw http.ResponseWriter, cause error, code int) {
@@ -35,7 +36,14 @@ func (rd *RProxy) fail(rw http.ResponseWriter, cause error, code int) {
 func (rd *RProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	log.Printf("Received request for: %s\n", req.Host)
 
-	key := strings.Split(req.Host, ".")[0]
+	splitted := strings.Split(req.Host, ".")
+
+	if len(splitted) == 0 {
+		rd.fail(rw, fmt.Errorf("serpe: missing key"), http.StatusBadRequest)
+		return
+	}
+
+	key := splitted[0]
 
 	url, ok := rd.mapping[key]
 
@@ -65,10 +73,17 @@ func (rd *RProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	rw.Header().Add("x-serpe", "true")
-	for k, v := range rw.Header() {
-		fmt.Printf("%s: %s\n", k, v)
-	}
 
 	rw.WriteHeader(response.StatusCode)
 	io.Copy(rw, response.Body)
+
+	// save
+	if rd.saver != nil {
+		rd.saver.Save(&RequestSaving{
+			Url:    req.URL.String(),
+			Sender: "sender url placeholder",
+			Method: req.Method,
+			Path:   req.URL.Path,
+		})
+	}
 }
